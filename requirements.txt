@@ -1,0 +1,7 @@
+streamlit
+anthropic
+crewai
+langchain-anthropic
+PyPDF2
+pandas
+python-dotenv
