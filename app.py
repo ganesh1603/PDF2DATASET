@@ -140,8 +140,10 @@ with tab2:
                             {
                                 "role": "user",
                                 "content": (
-                                    "Extract dataset from the following text.\n"
-                                    "Return ONLY a valid JSON array.\n\n"
+                                    "Follow the schema exactly.\n"
+                                    "Example output:\n"
+                                    f"{json.dumps(template['example'], indent=2)}\n\n"
+                                    "Text to extract from:\n"
                                     f"{safe_chunk}"
                                 )
                             }
@@ -221,3 +223,4 @@ with tab3:
 
         with st.expander("Full Dataset"):
             st.json(dataset)
+
