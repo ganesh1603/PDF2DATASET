@@ -3,8 +3,8 @@ import PyPDF2
 import json
 from io import BytesIO
 from anthropic import Anthropic
-from .templates import TEMPLATES
-from .agent import validate_dataset
+from templates import TEMPLATES
+from agent import validate_dataset
 from dotenv import load_dotenv
 import os
 
@@ -143,4 +143,5 @@ with tab3:
                 st.json(entry)
         
         with st.expander("Full Dataset"):
+
             st.json(dataset)
