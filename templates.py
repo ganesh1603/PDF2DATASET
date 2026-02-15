@@ -1,4 +1,22 @@
 TEMPLATES = {
+    "tamil_qa": {
+        "name": "🇮🇳 Tamil Q&A",
+        "prompt": (
+            "You are a Tamil dataset creator.\n"
+            "Extract information and create Q&A pairs in Tamil.\n"
+            "Output ONLY valid JSON. No explanations. No markdown.\n"
+            "Return a JSON ARRAY. Each item must follow this schema:\n"
+            "{ question: string (Tamil), answer: string (Tamil), category: string }\n"
+            "Write in proper Tamil script (தமிழ்).\n"
+        ),
+        "example": [
+            {
+                "question": "முதலமைச்சரின் மருத்துவக் காப்பீடு என்றால் என்ன?",
+                "answer": "இது தமிழ்நாடு அரசின் இலவச மருத்துவத் திட்டம்...",
+                "category": "health"
+            }
+        ]
+    },
     "chat": {
         "name": "💬 Chat",
         "prompt": (
@@ -18,7 +36,6 @@ TEMPLATES = {
             }
         ]
     },
-
     "instruction": {
         "name": "📝 Instruction",
         "prompt": (
@@ -36,7 +53,6 @@ TEMPLATES = {
             }
         ]
     },
-
     "qa": {
         "name": "❓ Q&A",
         "prompt": (
@@ -54,7 +70,6 @@ TEMPLATES = {
             }
         ]
     },
-
     "dpo": {
         "name": "⚖️ DPO",
         "prompt": (
