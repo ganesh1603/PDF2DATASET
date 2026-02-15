@@ -1,8 +1,13 @@
+import os
+
+# MUST be before crewai import
+os.environ["CREWAI_DISABLE_TELEMETRY"] = "true"
+os.environ["CREWAI_TELEMETRY"] = "false"
+
 from crewai import Agent, Task, Crew, Process
 from langchain_anthropic import ChatAnthropic
 import json
-import os
-os.environ["CREWAI_DISABLE_TELEMETRY"] = "true"
+
 
 def validate_dataset(dataset, api_key):
     """Run CrewAI validation"""
@@ -37,3 +42,4 @@ Provide: score (1-10), issues found, recommendations.""",
     crew = Crew(agents=[validator], tasks=[task], process=Process.sequential)
 
     return crew.kickoff()
+
