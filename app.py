@@ -7,13 +7,11 @@ from templates import TEMPLATES
 from agent import validate_dataset
 from dotenv import load_dotenv
 import os
-import tempfile
 import re
+import numpy as np
 
-from pdfminer.high_level import extract_text
 from pdf2image import convert_from_bytes
-import pytesseract
-from PIL import Image
+import easyocr
 
 # --------------------------------------------------
 # Page config
@@ -43,56 +41,24 @@ def clean_tamil_text(text: str) -> str:
 
 
 # --------------------------------------------------
-# Detect Corrupted Tamil
+# OCR Extraction (Streamlit Cloud Safe)
 # --------------------------------------------------
-def is_tamil_corrupted(text: str) -> bool:
-    if not text:
-        return True
+def extract_text_from_pdf(pdf_bytes):
+    st.info("🔎 Running OCR (Tamil)...")
 
-    tamil_chars = re.findall(r'[\u0B80-\u0BFF]', text)
-    ratio = len(tamil_chars) / max(len(text), 1)
-
-    return ratio < 0.1  # Less than 10% Tamil → probably corrupted
-
-
-# --------------------------------------------------
-# OCR Extraction
-# --------------------------------------------------
-def extract_with_ocr(pdf_bytes):
-    st.info("🔎 Running OCR... (Tamil language)")
+    reader = easyocr.Reader(['ta'], gpu=False)
 
     images = convert_from_bytes(pdf_bytes, dpi=300)
 
     full_text = ""
 
     for img in images:
-        text = pytesseract.image_to_string(img, lang="tam")
-        full_text += text + "\n\n"
+        img_np = np.array(img)
+        results = reader.readtext(img_np, detail=0)
+        page_text = " ".join(results)
+        full_text += page_text + "\n\n"
 
     return clean_tamil_text(full_text)
-
-
-# --------------------------------------------------
-# Main Extraction Logic
-# --------------------------------------------------
-def extract_text_from_pdf(pdf_bytes):
-    try:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
-            tmp.write(pdf_bytes)
-            tmp_path = tmp.name
-
-        text = extract_text(tmp_path)
-        text = clean_tamil_text(text)
-
-        if is_tamil_corrupted(text):
-            st.warning("⚠️ Text looks corrupted. Switching to OCR...")
-            return extract_with_ocr(pdf_bytes)
-
-        return text
-
-    except Exception as e:
-        st.warning(f"⚠️ Direct extraction failed. Using OCR. Error: {e}")
-        return extract_with_ocr(pdf_bytes)
 
 
 # --------------------------------------------------
@@ -126,7 +92,7 @@ if "api_key" not in st.session_state:
 # --------------------------------------------------
 st.title("🤖 PDF to Dataset Creator")
 st.caption("Transform PDFs into LLM training datasets with AI validation")
-st.info("📚 Smart extraction: Direct + Auto OCR fallback (Tamil supported)")
+st.info("📚 Using OCR (EasyOCR) – Tamil safe for Community Cloud")
 
 # --------------------------------------------------
 # Sidebar
@@ -173,7 +139,7 @@ with tab1:
     uploaded = st.file_uploader("Upload PDF", type=["pdf"])
 
     if uploaded and st.button("Extract Text"):
-        with st.spinner("Extracting text..."):
+        with st.spinner("Extracting text via OCR..."):
             pdf_bytes = uploaded.read()
             extracted_text = extract_text_from_pdf(pdf_bytes)
 
