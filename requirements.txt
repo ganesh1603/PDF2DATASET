@@ -4,4 +4,8 @@ crewai
 langchain-anthropic
 PyPDF2
 pandas
+pdfminer.six
+pdf2image
+pytesseract
+Pillow
 python-dotenv
