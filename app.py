@@ -7,8 +7,13 @@ from templates import TEMPLATES
 from agent import validate_dataset
 from dotenv import load_dotenv
 import os
-import subprocess
 import tempfile
+import re
+
+from pdfminer.high_level import extract_text
+from pdf2image import convert_from_bytes
+import pytesseract
+from PIL import Image
 
 # --------------------------------------------------
 # Page config
@@ -22,96 +27,90 @@ st.set_page_config(
 load_dotenv()
 
 # --------------------------------------------------
-# Helpers
+# Tamil Text Cleaning (SAFE)
 # --------------------------------------------------
-def extract_text_from_pdf(pdf_bytes):
-    """Extract text from PDF using pdftotext (BEST for Tamil)"""
-    
-    # Save PDF to temporary file
-    with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp_file:
-        tmp_file.write(pdf_bytes)
-        tmp_path = tmp_file.name
-    
-    try:
-        # Use pdftotext (BEST for Tamil)
-        result = subprocess.run(
-            ['pdftotext', tmp_path, '-'],
-            capture_output=True,
-            text=True,
-            timeout=30
-        )
-        
-        if result.returncode == 0 and result.stdout:
-            return clean_tamil_text(result.stdout)
-        else:
-            st.warning("⚠️ pdftotext failed, using fallback")
-            return extract_with_pypdf2(pdf_bytes)
-    
-    except FileNotFoundError:
-        st.warning("⚠️ pdftotext not found. Install: apt-get install poppler-utils")
-        return extract_with_pypdf2(pdf_bytes)
-    
-    except Exception as e:
-        st.error(f"Error: {e}")
-        return extract_with_pypdf2(pdf_bytes)
-    
-    finally:
-        if os.path.exists(tmp_path):
-            os.unlink(tmp_path)
-
-
-def extract_with_pypdf2(pdf_bytes):
-    """Fallback: Use PyPDF2 with cleaning"""
-    import PyPDF2
-    reader = PyPDF2.PdfReader(BytesIO(pdf_bytes))
-    text = "\n\n".join(
-        page.extract_text() or "" for page in reader.pages
-    )
-    return clean_tamil_text(text)
-
-
 def clean_tamil_text(text: str) -> str:
-    """Clean Tamil text - remove duplicate characters"""
     if not text:
         return ""
-    
-    import re
-    
-    # Remove duplicate consecutive characters
-    cleaned = []
-    prev_char = ''
-    
-    for char in text:
-        if char in [' ', '\n', '\t']:
-            if not (char == ' ' and prev_char == ' '):
-                cleaned.append(char)
-            prev_char = char
-            continue
-        
-        if char != prev_char:
-            cleaned.append(char)
-        prev_char = char
-    
-    result = ''.join(cleaned)
-    result = unicodedata.normalize("NFC", result)
-    result = re.sub(r' +', ' ', result)
-    result = re.sub(r'\n\n+', '\n\n', result)
-    
-    return result.strip()
+
+    text = unicodedata.normalize("NFC", text)
+    text = text.replace("\x00", "")
+
+    text = re.sub(r"[ \t]+", " ", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+
+    return text.strip()
 
 
+# --------------------------------------------------
+# Detect Corrupted Tamil
+# --------------------------------------------------
+def is_tamil_corrupted(text: str) -> bool:
+    if not text:
+        return True
+
+    tamil_chars = re.findall(r'[\u0B80-\u0BFF]', text)
+    ratio = len(tamil_chars) / max(len(text), 1)
+
+    return ratio < 0.1  # Less than 10% Tamil → probably corrupted
+
+
+# --------------------------------------------------
+# OCR Extraction
+# --------------------------------------------------
+def extract_with_ocr(pdf_bytes):
+    st.info("🔎 Running OCR... (Tamil language)")
+
+    images = convert_from_bytes(pdf_bytes, dpi=300)
+
+    full_text = ""
+
+    for img in images:
+        text = pytesseract.image_to_string(img, lang="tam")
+        full_text += text + "\n\n"
+
+    return clean_tamil_text(full_text)
+
+
+# --------------------------------------------------
+# Main Extraction Logic
+# --------------------------------------------------
+def extract_text_from_pdf(pdf_bytes):
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+            tmp.write(pdf_bytes)
+            tmp_path = tmp.name
+
+        text = extract_text(tmp_path)
+        text = clean_tamil_text(text)
+
+        if is_tamil_corrupted(text):
+            st.warning("⚠️ Text looks corrupted. Switching to OCR...")
+            return extract_with_ocr(pdf_bytes)
+
+        return text
+
+    except Exception as e:
+        st.warning(f"⚠️ Direct extraction failed. Using OCR. Error: {e}")
+        return extract_with_ocr(pdf_bytes)
+
+
+# --------------------------------------------------
+# JSON Safe Clean
+# --------------------------------------------------
 def clean_text(text: str) -> str:
-    """Make text safe for JSON + LLM APIs"""
     if not isinstance(text, str):
         text = str(text)
+
     text = unicodedata.normalize("NFC", text)
     text = text.encode("utf-8", "ignore").decode("utf-8")
     text = text.replace("\x00", "")
+
     return text
 
 
 # --------------------------------------------------
-# Session state init
+# Session state
 # --------------------------------------------------
 if "dataset" not in st.session_state:
     st.session_state.dataset = []
@@ -127,7 +126,7 @@ if "api_key" not in st.session_state:
 # --------------------------------------------------
 st.title("🤖 PDF to Dataset Creator")
 st.caption("Transform PDFs into LLM training datasets with AI validation")
-st.info("📚 Using: **pdftotext** for PDF extraction (best for Tamil)")
+st.info("📚 Smart extraction: Direct + Auto OCR fallback (Tamil supported)")
 
 # --------------------------------------------------
 # Sidebar
@@ -153,6 +152,7 @@ with st.sidebar:
         options=list(TEMPLATES.keys()),
         format_func=lambda x: TEMPLATES[x]["name"]
     )
+
     template = TEMPLATES[template_key]
 
     with st.expander("Template Example"):
@@ -176,16 +176,15 @@ with tab1:
         with st.spinner("Extracting text..."):
             pdf_bytes = uploaded.read()
             extracted_text = extract_text_from_pdf(pdf_bytes)
-            
+
             st.session_state.text = extracted_text
-            
             num_chars = len(extracted_text)
-            
+
             st.success(f"✅ Extracted {num_chars:,} characters")
             st.text_area("Preview", extracted_text[:1000], height=200)
 
 # --------------------------------------------------
-# TAB 2 — Generate
+# TAB 2 — Generate Dataset
 # --------------------------------------------------
 with tab2:
     if not st.session_state.text:
